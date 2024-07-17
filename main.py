@@ -11,8 +11,8 @@ from tqdm import tqdm
 
 from src.datasets import ThingsMEGDataset
 from src.models import BasicConvClassifier
+from src.models import DeepConvClassifier # 修正済み
 from src.utils import set_seed
-
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def run(args: DictConfig):
@@ -26,12 +26,12 @@ def run(args: DictConfig):
     #    Dataloader
     # ------------------
     loader_args = {"batch_size": args.batch_size, "num_workers": args.num_workers}
-    
-    train_set = ThingsMEGDataset("train", args.data_dir)
+
+    train_set = ThingsMEGDataset(split="train", data_dir=args.data_dir, apply_preprocessing=args.apply_preprocessing)
     train_loader = torch.utils.data.DataLoader(train_set, shuffle=True, **loader_args)
-    val_set = ThingsMEGDataset("val", args.data_dir)
+    val_set = ThingsMEGDataset(split="val", data_dir=args.data_dir, apply_preprocessing=args.apply_preprocessing)
     val_loader = torch.utils.data.DataLoader(val_set, shuffle=False, **loader_args)
-    test_set = ThingsMEGDataset("test", args.data_dir)
+    test_set = ThingsMEGDataset(split="test", data_dir=args.data_dir, apply_preprocessing=args.apply_preprocessing)
     test_loader = torch.utils.data.DataLoader(
         test_set, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers
     )
@@ -39,8 +39,16 @@ def run(args: DictConfig):
     # ------------------
     #       Model
     # ------------------
-    model = BasicConvClassifier(
-        train_set.num_classes, train_set.seq_len, train_set.num_channels
+    #model = BasicConvClassifier(
+    #    num_classes=train_set.num_classes, 
+    #    seq_len=train_set.seq_len, 
+    #    in_channels=train_set.num_channels
+    #).to(args.device)
+
+    model = DeepConvClassifier(
+        num_classes=train_set.num_classes, 
+        seq_len=train_set.seq_len, 
+        in_channels=train_set.num_channels
     ).to(args.device)
 
     # ------------------
@@ -55,14 +63,14 @@ def run(args: DictConfig):
     accuracy = Accuracy(
         task="multiclass", num_classes=train_set.num_classes, top_k=10
     ).to(args.device)
-      
+
     for epoch in range(args.epochs):
         print(f"Epoch {epoch+1}/{args.epochs}")
         
         train_loss, train_acc, val_loss, val_acc = [], [], [], []
         
         model.train()
-        for X, y, subject_idxs in tqdm(train_loader, desc="Train"):
+        for X, y, _ in tqdm(train_loader, desc="Train"):
             X, y = X.to(args.device), y.to(args.device)
 
             y_pred = model(X)
@@ -78,7 +86,7 @@ def run(args: DictConfig):
             train_acc.append(acc.item())
 
         model.eval()
-        for X, y, subject_idxs in tqdm(val_loader, desc="Validation"):
+        for X, y, _ in tqdm(val_loader, desc="Validation"):
             X, y = X.to(args.device), y.to(args.device)
             
             with torch.no_grad():
@@ -96,18 +104,15 @@ def run(args: DictConfig):
             cprint("New best.", "cyan")
             torch.save(model.state_dict(), os.path.join(logdir, "model_best.pt"))
             max_val_acc = np.mean(val_acc)
-            
-    
-    # ----------------------------------
-    #  Start evaluation with best model
-    # ----------------------------------
+
     model.load_state_dict(torch.load(os.path.join(logdir, "model_best.pt"), map_location=args.device))
 
     preds = [] 
     model.eval()
-    for X, subject_idxs in tqdm(test_loader, desc="Validation"):        
-        preds.append(model(X.to(args.device)).detach().cpu())
-        
+    for X, _ in tqdm(test_loader, desc="Test"):
+        with torch.no_grad():
+            preds.append(model(X.to(args.device)).cpu())
+    
     preds = torch.cat(preds, dim=0).numpy()
     np.save(os.path.join(logdir, "submission"), preds)
     cprint(f"Submission {preds.shape} saved at {logdir}", "cyan")
@@ -115,3 +120,4 @@ def run(args: DictConfig):
 
 if __name__ == "__main__":
     run()
+
