@@ -10,8 +10,7 @@ from termcolor import cprint
 from tqdm import tqdm
 
 from src.datasets import ThingsMEGDataset
-from src.models import BasicConvClassifier
-from src.models import DeepConvClassifier # 修正済み
+from src.models import DeepConvClassifier
 from src.utils import set_seed
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
@@ -39,11 +38,6 @@ def run(args: DictConfig):
     # ------------------
     #       Model
     # ------------------
-    #model = BasicConvClassifier(
-    #    num_classes=train_set.num_classes, 
-    #    seq_len=train_set.seq_len, 
-    #    in_channels=train_set.num_channels
-    #).to(args.device)
 
     model = DeepConvClassifier(
         num_classes=train_set.num_classes, 
